@@ -480,6 +480,7 @@ class Editor(tk.Tk):
         self.minsize(700, 460)
 
         self.current_file = None
+        self.current_session = None
         self.dirty = False
         self.theme_name = "oscuro"
         self.font_size = 13
@@ -573,10 +574,19 @@ class Editor(tk.Tk):
 
         m_file = tk.Menu(menubar, tearoff=0)
         m_file.add_command(label="Nuevo", accelerator="Ctrl+N", command=self.new_file)
-        m_file.add_command(label="Abrir...", accelerator="Ctrl+O", command=self.open_file)
-        m_file.add_command(label="Guardar", accelerator="Ctrl+S", command=self.save_file)
-        m_file.add_command(label="Guardar como...", accelerator="Ctrl+Shift+S",
+        m_file.add_separator()
+        m_file.add_command(label="Abrir código...", accelerator="Ctrl+O", command=self.open_file)
+        m_file.add_command(label="Guardar código", accelerator="Ctrl+S", command=self.save_file)
+        m_file.add_command(label="Guardar código como...", accelerator="Ctrl+Shift+S",
                            command=self.save_file_as)
+        m_file.add_separator()
+        m_file.add_command(label="Abrir diagrama (.json)...", command=self._open_diagram)
+        m_file.add_command(label="Guardar diagrama (.json)...", command=self._save_diagram)
+        m_file.add_separator()
+        m_file.add_command(label="Abrir sesión (.aga)...", accelerator="Ctrl+Shift+O",
+                           command=self.open_session)
+        m_file.add_command(label="Guardar sesión (.aga)...", accelerator="Ctrl+Alt+S",
+                           command=self.save_session)
         m_file.add_separator()
         m_file.add_command(label="Salir", command=self.on_close)
         menubar.add_cascade(label="Archivo", menu=m_file)
@@ -642,8 +652,10 @@ class Editor(tk.Tk):
             return b
 
         make_btn("Nuevo", self.new_file)
-        make_btn("Abrir", self.open_file)
-        make_btn("Guardar", self.save_file)
+        make_btn("Abrir código", self.open_file)
+        make_btn("Guardar código", self.save_file)
+        make_btn("💾 Sesión", self.save_session)
+        make_btn("📂 Sesión", self.open_session)
         make_btn("Limpiar salida", self.clear_output)
 
     def _build_widgets(self):
@@ -696,6 +708,13 @@ class Editor(tk.Tk):
         self.diagram_toolbar = tk.Frame(self.diagram_page)
         self.diagram_toolbar.pack(fill="x", side="top")
 
+        self.tools_row = tk.Frame(self.diagram_toolbar)
+        self.tools_row.pack(fill="x")
+        self.style_row = tk.Frame(self.diagram_toolbar)
+        self.style_row.pack(fill="x")
+
+        self._diagram_plain = []
+
         self.tool_buttons = {}
         tools = [
             ("select", "🖱  Mover (V)"),
@@ -709,37 +728,38 @@ class Editor(tk.Tk):
         for name, label in tools:
             command = (self._open_figures_menu if name == "figure"
                        else (lambda n=name: self._set_tool(n)))
-            b = tk.Button(self.diagram_toolbar, text=label, relief="flat",
-                          padx=10, pady=6, cursor="hand2",
+            b = tk.Button(self.tools_row, text=label, relief="flat",
+                          padx=10, pady=5, cursor="hand2",
                           font=("Segoe UI", 10), command=command)
-            b.pack(side="left", padx=3, pady=6)
+            b.pack(side="left", padx=3, pady=4)
             self.tool_buttons[name] = b
 
-        tk.Label(self.diagram_toolbar, text="  Color:", font=("Segoe UI", 9)
-                 ).pack(side="left", padx=(10, 2))
+        self._diagram_plain.append(
+            self._make_plain(self.tools_row, "📂 Abrir diagrama",
+                             self._open_diagram, side="right", pad=(3, 8)))
+        self._diagram_plain.append(
+            self._make_plain(self.tools_row, "💾 Guardar diagrama",
+                             self._save_diagram, side="right", pad=3))
+
+        self._diagram_plain.append(
+            tk.Label(self.style_row, text="  Color:", font=("Segoe UI", 9)))
+        self._diagram_plain[-1].pack(side="left", padx=(6, 2))
         self.color_buttons = {}
         for color in DIAGRAM_COLORS:
-            b = tk.Button(self.diagram_toolbar, bg=color, width=2, relief="flat",
+            b = tk.Button(self.style_row, bg=color, width=2, relief="flat",
                           cursor="hand2", command=lambda c=color: self._set_color(c))
-            b.pack(side="left", padx=1, pady=10)
+            b.pack(side="left", padx=1, pady=6)
             self.color_buttons[color] = b
 
         self.no_fill_button = tk.Button(
-            self.diagram_toolbar, text="∅  Sin relleno", relief="flat",
-            padx=8, pady=6, cursor="hand2", font=("Segoe UI", 9),
+            self.style_row, text="∅  Sin relleno", relief="flat",
+            padx=8, pady=5, cursor="hand2", font=("Segoe UI", 9),
             command=self._toggle_no_fill)
-        self.no_fill_button.pack(side="left", padx=(8, 3), pady=6)
+        self.no_fill_button.pack(side="left", padx=(10, 3), pady=4)
 
-        tk.Button(self.diagram_toolbar, text="🧹 Borrar todo (Alt+Q)", relief="flat",
-                  padx=10, pady=6, cursor="hand2", font=("Segoe UI", 10),
-                  command=self._clear_diagram).pack(side="left", padx=(10, 3), pady=6)
-
-        tk.Button(self.diagram_toolbar, text="💾 Guardar", relief="flat",
-                  padx=10, pady=6, cursor="hand2", font=("Segoe UI", 10),
-                  command=self._save_diagram).pack(side="right", padx=(3, 8), pady=6)
-        tk.Button(self.diagram_toolbar, text="📂 Abrir", relief="flat",
-                  padx=10, pady=6, cursor="hand2", font=("Segoe UI", 10),
-                  command=self._open_diagram).pack(side="right", padx=3, pady=6)
+        self._diagram_plain.append(
+            self._make_plain(self.style_row, "🧹 Borrar todo (Alt+Q)",
+                             self._clear_diagram, side="left", pad=(10, 3)))
 
         self.canvas = tk.Canvas(self.diagram_page, bg="#ffffff",
                                 highlightthickness=0, cursor="crosshair",
@@ -758,12 +778,24 @@ class Editor(tk.Tk):
         self.bind_all("<Alt-Q>", self._on_shortcut_clear, add="+")
         self.canvas.bind("<Delete>", self._delete_selected)
         self.canvas.bind("<BackSpace>", self._delete_selected)
-        for child in self.diagram_toolbar.winfo_children():
+        for widget in (list(self.tool_buttons.values())
+                       + list(self.color_buttons.values())
+                       + self._diagram_plain + [self.no_fill_button]):
             try:
-                child.configure(takefocus=0)
+                widget.configure(takefocus=0)
             except tk.TclError:
                 pass
         self._set_tool("select")
+
+    @staticmethod
+    def _make_plain(parent, text, command, side="left", pad=3):
+        b = tk.Button(parent, text=text, command=command, relief="flat",
+                      padx=10, pady=5, cursor="hand2", font=("Segoe UI", 10))
+        if isinstance(pad, tuple):
+            b.pack(side=side, padx=pad, pady=4)
+        else:
+            b.pack(side=side, padx=pad, pady=4)
+        return b
 
     def _set_tool(self, name):
         self.diagram_tool = name
@@ -1304,12 +1336,7 @@ class Editor(tk.Tk):
             self._refresh_anchors()
         self._focus_canvas()
 
-    def _save_diagram(self):
-        path = filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=[("Diagrama AlgoNotas", "*.json"), ("Todos", "*.*")])
-        if not path:
-            return
+    def _diagram_data(self):
         order = list(self._shapes.keys())
         index = {tag: i for i, tag in enumerate(order)}
         data = []
@@ -1340,30 +1367,28 @@ class Editor(tk.Tk):
                 entry["start_anchor"] = meta.get("start_anchor")
                 entry["end_anchor"] = meta.get("end_anchor")
             data.append(entry)
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump({"shapes": data}, f, ensure_ascii=False, indent=2)
-        except Exception as exc:
-            messagebox.showerror(APP_NAME, f"No se pudo guardar:\n{exc}")
-        self._focus_canvas()
+        return data
 
-    def _open_diagram(self):
-        path = filedialog.askopenfilename(
+    def _save_diagram(self):
+        path = filedialog.asksaveasfilename(
+            defaultextension=".json",
             filetypes=[("Diagrama AlgoNotas", "*.json"), ("Todos", "*.*")])
         if not path:
             return
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"shapes": self._diagram_data()}, f,
+                          ensure_ascii=False, indent=2)
         except Exception as exc:
-            messagebox.showerror(APP_NAME, f"No se pudo abrir:\n{exc}")
-            return
+            messagebox.showerror(APP_NAME, f"No se pudo guardar:\n{exc}")
+        self._focus_canvas()
+
+    def _load_diagram_data(self, shapes_data):
         self.canvas.delete("all")
         self._shapes.clear()
         self._selected = None
         self._selected_tag = None
 
-        shapes_data = data.get("shapes", [])
         tag_by_index = {}
         for i, shape in enumerate(shapes_data):
             kind = shape.get("kind")
@@ -1431,7 +1456,66 @@ class Editor(tk.Tk):
             meta["end_anchor"] = shape.get("end_anchor")
             self._update_arrow(tag_by_index[i])
         self._refresh_anchors()
+
+    def _open_diagram(self):
+        path = filedialog.askopenfilename(
+            filetypes=[("Diagrama AlgoNotas", "*.json"), ("Todos", "*.*")])
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, f"No se pudo abrir:\n{exc}")
+            return
+        self._load_diagram_data(data.get("shapes", []))
         self._focus_canvas()
+
+    # -------------------------------------------------- sesión (.aga)
+    def save_session(self):
+        path = filedialog.asksaveasfilename(
+            defaultextension=".aga",
+            filetypes=[("Sesión AlgoNotas", "*.aga"), ("Todos", "*.*")])
+        if not path:
+            return
+        payload = {
+            "app": APP_NAME, "version": APP_VERSION, "type": "session",
+            "code": self.text.get("1.0", "end-1c"),
+            "diagram": self._diagram_data(),
+        }
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, f"No se pudo guardar la sesión:\n{exc}")
+            return
+        self.current_session = path
+        self.dirty = False
+        self.text.edit_modified(False)
+        self.title(f"{APP_NAME} - {os.path.basename(path)}")
+
+    def open_session(self):
+        if not self._confirm_discard():
+            return
+        path = filedialog.askopenfilename(
+            filetypes=[("Sesión AlgoNotas", "*.aga"), ("Todos", "*.*")])
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, f"No se pudo abrir la sesión:\n{exc}")
+            return
+        self.text.delete("1.0", "end")
+        self.text.insert("1.0", data.get("code", ""))
+        self.text.edit_modified(False)
+        self.dirty = False
+        self._load_diagram_data(data.get("diagram", []))
+        self.current_session = path
+        self.title(f"{APP_NAME} - {os.path.basename(path)}")
+        self._update_line_numbers()
+        self._schedule_highlight()
 
     def _bind_events(self):
         self.text.bind("<<Modified>>", self._on_modified)
@@ -1446,6 +1530,9 @@ class Editor(tk.Tk):
         self.bind_all("<Control-o>", lambda e: self.open_file())
         self.bind_all("<Control-s>", lambda e: self.save_file())
         self.bind_all("<Control-S>", lambda e: self.save_file_as())
+        self.bind_all("<Control-Shift-O>", lambda e: self.open_session())
+        self.bind_all("<Control-Shift-o>", lambda e: self.open_session())
+        self.bind_all("<Control-Alt-s>", lambda e: self.save_session())
         self.bind_all("<F5>", lambda e: self.run_code())
         self.bind_all("<Control-plus>", lambda e: self.change_font(1))
         self.bind_all("<Control-equal>", lambda e: self.change_font(1))
@@ -1485,12 +1572,12 @@ class Editor(tk.Tk):
         self.code_page.configure(bg=t["bg"])
         self.diagram_page.configure(bg=t["bg"])
         self.diagram_toolbar.configure(bg=t["toolbar_bg"])
-        keep = set(self.color_buttons.values()) | set(self.tool_buttons.values())
-        for child in self.diagram_toolbar.winfo_children():
-            if child not in keep:
-                child.configure(bg=t["toolbar_bg"], fg=t["toolbar_fg"],
-                                activebackground=t["accent"],
-                                activeforeground="#ffffff")
+        self.tools_row.configure(bg=t["toolbar_bg"])
+        self.style_row.configure(bg=t["toolbar_bg"])
+        for widget in self._diagram_plain:
+            widget.configure(bg=t["toolbar_bg"], fg=t["toolbar_fg"],
+                             activebackground=t["accent"],
+                             activeforeground="#ffffff")
         self._style_diagram_buttons()
 
         self.text.tag_configure("keyword", foreground=t["keyword"])
@@ -1730,7 +1817,14 @@ class Editor(tk.Tk):
         if not self._confirm_discard():
             return
         self.text.delete("1.0", "end")
+        if self._shapes:
+            self.canvas.delete("all")
+            self._shapes.clear()
+            self._selected = None
+            self._selected_tag = None
+            self._refresh_anchors()
         self.current_file = None
+        self.current_session = None
         self.dirty = False
         self.text.edit_modified(False)
         self.title(f"{APP_NAME} - Sin título")
@@ -1918,6 +2012,8 @@ class Editor(tk.Tk):
             "Herramienta Figuras: persona, computadora, base de datos, monitor, "
             "servidor, rombo, nube y documento.\n"
             "Relleno transparente (∅) y flechas que siguen a las formas.\n\n"
+            "Guardado: código (.py/.txt), diagrama (.json) o sesión completa "
+            "(.aga) con ambos.\n\n"
             "Atajos diagrama: V mover · C círculo · B caja · T texto · "
             "F flecha · Q borrador · Alt+Q borrar todo\n\n"
             "Atajos: Ctrl+N/O/S · F5 ejecutar · Ctrl+rueda zoom")
