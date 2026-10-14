@@ -30,6 +30,20 @@ El editor de código posee un atajo a la impresión de conceptos básicos de pro
 
 El editor de  diagramas se compone de formas básicas del sistema UML **2.5** cómo ser: círculo, caja, texto, flecha, rombo (decisión), persona, computadora, base de datos, monitor, servidor, nube y documento.
 
+## Ejemplos de uso
+
+**Editor de código**
+
+![Editor de código](gifs/demo_codigo.gif)
+
+**Editor de diagramas**
+
+![Editor de diagramas](gifs/demo_diagrama.gif)
+
+**Todo junto (ambas pestañas)**
+
+![AlgoNotas en uso](gifs/demo_completo.gif)
+
 ## Atajos
 
 - **F5**: ejecutar el código.
